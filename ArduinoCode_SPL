@@ -1,0 +1,55 @@
+#include <arduinoFFT.h>
+#define ref_dB 94
+const int AudioPin = A0;
+const int sampleRate = 44100;
+const int frameSize = 64;
+const int hopSize = 32;
+double rawData[frameSize];
+double vReal[frameSize];
+double vImag[frameSize];
+double fWeight[frameSize] = {0};
+arduinoFFT FFT = arduinoFFT(vReal, vImag, frameSize, sampleRate);
+void setup() {
+Serial.begin(115200);
+pinMode(AudioPin, INPUT);
+}
+void loop() {
+double peak = 0.0;
+for (int i = 0; i < frameSize - hopSize; i++) {
+rawData[i] = rawData[i + hopSize];
+fWeight[i] = fWeight[i + hopSize];
+}
+for (int i = frameSize - hopSize; i < frameSize; i++) {
+rawData[i] = (analogRead(AudioPin) - 512) / 1023.0;
+fWeight[i] = 0.008 * rawData[i] * rawData[i] + (1 - 0.008) * fWeight[i - 1];
+}
+for (int i = 0; i < frameSize; i++) {
+vReal[i] = sqrt(fWeight[i]);
+vImag[i] = 0;
+}
+FFT.Windowing(vReal, frameSize, FFT_WIN_TYP_HAMMING, FFT_FORWARD);
+FFT.Compute(FFT_FORWARD);
+FFT.ComplexToMagnitude(vReal, vImag, frameSize);
+double sum = 0.0;
+for (int i = 0; i < frameSize / 2; i++) {
+double magnitude = sqrt(vReal[i]*vReal[i] + vImag[i]*vImag[i]);
+double dB = 20 * log10(magnitude) + ref_dB;
+sum += pow(10, dB / 10);
+}
+double total_dB = 10 * log10(sum);
+double f2 = pow((1000.0 * sampleRate) / frameSize, 2);
+double f4 = f2 * f2;
+double numerator = 12194.0 * 12194.0 * f4;
+double denominator = (f2 + 20.6 * 20.6) * sqrt((f2 + 107.7 * 107.7) * (f2 + 737.9 * 737.9)) * (f2 + 12194.0 * 12194.0);
+double A_weighting = 2.0 + (20.0 * log10(numerator / denominator));
+double dBA = total_dB + A_weighting;
+
+// Serial.print("\n");
+// Serial.print("Avtual dBA: ");
+// Serial.print(dBA);
+// Serial.print("\n");
+Serial.print("\n");
+Serial.print("dBA: ");
+Serial.print(dBA);
+Serial.print("\n");
+}
